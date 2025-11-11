@@ -1,6 +1,6 @@
 # StandUp4AI: A Multilingual Dataset for Humor Detection in Stand-up Comedy
 
-This repository contains the code and dataset for our EMNLP 2025 submission: **"StandUp4AI: A New Multilingual Dataset for Humor Detection in Stand-up Comedy Videos"**. 
+This repository contains the code and dataset for our [EMNLP 2025 Findings paper](https://aclanthology.org/2025.findings-emnlp.919/): **"StandUp4AI: A New Multilingual Dataset for Humor Detection in Stand-up Comedy Videos"**. 
 
 ## 📊 Dataset Overview
 
