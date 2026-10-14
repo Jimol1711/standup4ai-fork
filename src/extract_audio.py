@@ -2,6 +2,9 @@ import os
 import subprocess
 import argparse
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import runtime
 
 def extract_audio(input_folder, output_folder):
     """
@@ -26,6 +29,8 @@ def extract_audio(input_folder, output_folder):
         input_path = os.path.join(input_folder, mp4_file)
         output_filename = f"{os.path.splitext(mp4_file)[0]}.wav"
         output_path = os.path.join(output_folder, output_filename)
+        if os.path.exists(output_path):
+            continue
         
         print(f"Processing {mp4_file}...")
         
@@ -37,7 +42,8 @@ def extract_audio(input_folder, output_folder):
                 '-i', input_path,
                 '-vn',
                 '-acodec', 'pcm_s16le',  # Use PCM codec for WAV
-                '-ar', '44100',  # Sample rate
+                '-ar', '16000',
+                '-ac', '1',
                 output_path
             ], check=True)
             print(f"Successfully extracted audio to {output_path}")

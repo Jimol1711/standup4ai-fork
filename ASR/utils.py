@@ -4,6 +4,8 @@ import glob
 # import gc 
 
 def ASRNormalization(df):
+    if df.empty:
+        return pd.DataFrame(columns=['text', 't0', 't1', 't'])
     df[['t0', 't1']] = pd.DataFrame(df['timestamp'].to_list(), index=df.index)
     # Drop the original timestamp column
     df = df.drop(columns='timestamp')
@@ -14,7 +16,9 @@ def whisperjson2csv(path_json = 'home/user/data/standup/transcript/test_fr/seg_w
     """
     Files originally obtained from whisper
     """
-    df = pd.read_json(path_json)['chunks'].apply(pd.Series)
+    import json
+    with open(path_json, encoding='utf-8') as source:
+        df = pd.DataFrame(json.load(source)['chunks'])
     return ASRNormalization(df) 
      #df.to_csv('~/data/standup/transcript/test_fr/W__af-1wROuhw.csv')
 
@@ -34,6 +38,8 @@ def whisperX2csv(result):
                 print("Issue with the first word")
 
     df = pd.DataFrame(words_chunks)
+    if df.empty:
+        return pd.DataFrame(columns=['text', 'score', 't0', 't1', 't'])
     return ASRNormalization(df) 
 
 def fix_timestamps(dfx, 

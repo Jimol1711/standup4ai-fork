@@ -5,10 +5,12 @@ It creates csv files to validate or not the candidadte laughters, by manually an
 """
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
-from whisperX import whisperX_main
-from utils import whisperjson2csv, fix_timestamps, LaughtersNormalization
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ASR.utils import whisperjson2csv, fix_timestamps, LaughtersNormalization
 import pandas as pd
 import os
 import glob
@@ -24,7 +26,10 @@ def process_file(fn_wx, fn_wf, path_mixed, path_laughters, fn_new_laughters, t_m
     dfx.to_csv(path_mixed, index=False)
 
     # adding the new possible laughters to the list of already ML-detected ones 
-    laughters_base = pd.read_json(path_laughters).transpose().values
+    import json
+    with open(path_laughters, encoding='utf-8') as source:
+        events = json.load(source)
+    laughters_base = [(event['start_sec'], event['end_sec']) for event in events.values()]
     dfl = LaughtersNormalization(laughters_base, new_laughters, t_min)
     dfl.to_csv(fn_new_laughters, index=False)
 

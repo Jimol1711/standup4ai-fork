@@ -1,5 +1,7 @@
 # StandUp4AI: A Multilingual Dataset for Humor Detection in Stand-up Comedy
 
+**Windows / local venv:** see [SETUP_WINDOWS.md](SETUP_WINDOWS.md) for the complete setup, resumable full-dataset runner, output locations, and missing author-provided assets required for the published enhanced corpus.
+
 This repository contains the code and dataset for our [EMNLP 2025 Findings paper](https://aclanthology.org/2025.findings-emnlp.919/): **"StandUp4AI: A New Multilingual Dataset for Humor Detection in Stand-up Comedy Videos"**. 
 
 ## 📊 Dataset Overview

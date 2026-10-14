@@ -5,6 +5,10 @@ or
 python src/asr_pipeline.py --input_dir /data/user/standup/audio/cs/ --output_dir /data/user/standup/transcript/cs/whisper-large-v3-czech/ --language cs --model_id Cem13/whisper-large-v3-czech
 """
 import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import runtime
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0" # Set to -1 for CPU
 
@@ -45,9 +49,9 @@ def parse_arguments() -> argparse.Namespace:
                         help='Language of the audio files (e.g., "fr" for French)') 
     return parser.parse_args()
 
-def setup_model(model_id: str) -> tuple:
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+def setup_model(model_id: str, device=None) -> tuple:
+    device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
+    torch_dtype = torch.float16 if str(device).startswith("cuda") else torch.float32
     logging.info(f"Using device: {device}")
     model = AutoModelForSpeechSeq2Seq.from_pretrained(
         model_id,
@@ -171,14 +175,16 @@ def process_batch(pipe, audio_files: List[str], output_dir: str,
                     output_dir,
                     f"{os.path.splitext(os.path.basename(audio_file))[0]}.json"
                 )
-                with open(output_file, 'w', encoding='utf-8') as f:
+                with open(output_file + '.tmp', 'w', encoding='utf-8') as f:
                     json.dump(output_data, f, ensure_ascii=False, indent=2)
+                os.replace(output_file + '.tmp', output_file)
                 logging.info(f"Saved transcription to {output_file}")
         
         except Exception as e:
             logging.error(f"Error processing batch: {e}")
             for audio_file in batch_to_process:
                 logging.error(f"Failed to process file: {audio_file}")
+            raise
 
 def main():
     setup_logging()

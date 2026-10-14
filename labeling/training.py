@@ -2,6 +2,10 @@
 Script to train the sequence labelling models 
 """
 import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime import DATA_ROOT, local_model
 #os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -24,10 +28,10 @@ import evaluate
 import os
 
 # path_data = "/home/user/standup_comedyclub/dataset/"
-path_data = "/home/user/data/standup/dataset/"
+path_data = str(DATA_ROOT / "dataset") + os.sep
 
 # path_dump_model = "../dataset/"
-path_dump_model = "/home/user/data/standup/dump_models/" # because we have space on data folder
+path_dump_model = str(DATA_ROOT / "dump_models") + os.sep
 
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
@@ -67,8 +71,11 @@ def compute_metrics(eval_pred):
 
     return results
 
-metric = evaluate.load("seqeval")
+metric = None
 def compute_metrics_seqeval(eval_pred):
+    global metric
+    if metric is None:
+        metric = evaluate.load("seqeval")
     logits, labels = eval_pred
     preds = np.argmax(logits, axis=-1)
 
@@ -220,7 +227,8 @@ def main():
     )
 
     # Tokenizer + Tokenization
-    tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
+    model_path = local_model('FacebookAI/xlm-roberta-base')
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenized_train = train_ds.map(
         lambda ex: tokenize_and_align_batch(ex, tokenizer),
         batched=True, batch_size=1, remove_columns=["tokens", "tags"]
@@ -262,12 +270,12 @@ def main():
 
     # Model, data collator, trainer
     model = AutoModelForTokenClassification.from_pretrained(
-        "xlm-roberta-base", num_labels=num_labels
+        model_path, num_labels=num_labels
     )
     data_collator = DataCollatorForTokenClassification(tokenizer)
     training_args = TrainingArguments(
         output_dir="./checkpoints",
-        evaluation_strategy=args.evaluation_strategy,
+        eval_strategy=args.evaluation_strategy,
         save_strategy=args.evaluation_strategy,
         logging_strategy=args.evaluation_strategy,
         learning_rate=args.lr,
@@ -291,7 +299,7 @@ def main():
             train_dataset=tokenized_train,
             eval_dataset=tokenized_valid,
             data_collator=data_collator,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             compute_metrics=compute_metrics,
         )
     else:
@@ -301,7 +309,7 @@ def main():
             train_dataset=tokenized_train,
             eval_dataset=tokenized_valid,
             data_collator=data_collator,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             compute_metrics=compute_metrics,
         )
 
@@ -381,7 +389,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # do the in python rm -rf ./checkpoints using os
-    # do the in python rm -rf ./logs using os
-    os.system("rm -rf ./checkpoints")
-    # os.system("rm -rf ./logs")

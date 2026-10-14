@@ -3,21 +3,24 @@ import json
 import os
 import os.path as osp
 import glob
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import runtime
 from tqdm import tqdm
 
 import librosa
 import numpy as np
 from pydub import AudioSegment
 from pydub.silence import detect_silence
-import safetensors
+import safetensors.torch
 from scipy import signal
 import torch
 from transformers.trainer_utils import set_seed
 
-import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/train')
-from utils import concat_close, remove_short
-from model import Model
+sys.path.insert(0, str(runtime.ROOT / 'vendor' / 'LaughterSegmentation'))
+from evaluation._utils.utils import concat_close, remove_short
+from train.model import Model
 
 def merge_events(event_lists):
     merged_events = {}
@@ -84,7 +87,7 @@ def custom_amplituder_small_portion(array, sr, mul_fac=5):
     array = librosa.util.normalize(array)
     return array
 
-def main(audio_folder_path, output_dir, model_path, input_sec=7, batch_size=10):
+def main(audio_folder_path, output_dir, model_path, input_sec=7, batch_size=1, device=None, on_complete=None):
     audio_model_name = "jonatasgrosman/wav2vec2-large-xlsr-53-english"
 
     sr = 16000
@@ -96,22 +99,25 @@ def main(audio_folder_path, output_dir, model_path, input_sec=7, batch_size=10):
     over_lap_sec = 2.
     assert input_sec > over_lap_sec
 
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device(device or ("cuda:0" if torch.cuda.is_available() else "cpu"))
 
-    model = Model(audio_model_name, device, sr).to(device)
+    model = Model(runtime.local_model(audio_model_name), device, sr).to(device)
 
     if not osp.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}. Download the model file and place it in the specified path.")
     state_dict = safetensors.torch.load_file(model_path, device.index if device.type=="cuda" else "cpu")
     # state_dict = torch.load(model_path) # use when model is .bin format
     model.load_state_dict(state_dict)
+    del state_dict
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
 
     if not os.path.exists(output_dir):    
         os.makedirs(output_dir)
     
     model.eval()
     with torch.no_grad():
-        for audio_path in tqdm(glob.glob(audio_folder_path+'*.wav')):
+        for audio_path in tqdm(sorted(Path(audio_folder_path).glob('*.wav'))):
             basename = osp.splitext(osp.basename(audio_path))[0]
             out_file = osp.join(output_dir, basename+".json")
             
@@ -195,20 +201,25 @@ def main(audio_folder_path, output_dir, model_path, input_sec=7, batch_size=10):
                 if over_lap_sec > .0:
                     laughter = merge_events([laughter])
 
-                with open(out_file, mode='w', encoding="utf-8") as f:
+                with open(out_file + '.tmp', mode='w', encoding="utf-8") as f:
+                    duration = len(audio_array) / sr
+                    laughter = {key: {'start_sec': max(0., event['start_sec']),
+                                      'end_sec': min(duration, event['end_sec'])}
+                                for key, event in laughter.items() if event['start_sec'] < duration}
                     laughter = concat_close(laughter, 0.2)
                     laughter = remove_short(laughter, 0.2)
                     json.dump(laughter, f)
+                os.replace(out_file + '.tmp', out_file)
+            if on_complete is not None:
+                on_complete(Path(audio_path), Path(out_file))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--audio_folder_path', type=str, required=False)
+    parser.add_argument('--audio_folder_path', type=str, required=True)
     parser.add_argument('--output_dir', type=str, default="./output")
-    parser.add_argument('--model_path', type=str, default="./models/model.safetensors")
+    parser.add_argument('--model_path', type=str, default=str(runtime.ROOT / 'laughter/models/model.safetensors'))
+    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--device', choices=['cpu', 'cuda:0'], default=None)
     args = parser.parse_args()
-    path_ini = '/path/to/audio/'
-    for lang in ['pt', 'it', 'fr', 'hu', 'cs', 'es_latam', 'es', 'fr', 'en_us', 'en_uk']:
-        audio_folder_path = f"{path_ini}{lang}/"
-        output_dir = audio_folder_path+f'../../laughter_detection/{lang}/'
-        # output_dir = audio_folder_path+f'../../laughter_detection/'
-        main(audio_folder_path, output_dir, args.model_path)
+    main(args.audio_folder_path, args.output_dir, args.model_path,
+         batch_size=args.batch_size, device=args.device)

@@ -1,0 +1,9 @@
+{
+  "videos": 4,
+  "words": 3203,
+  "label_counts": {
+    "O": 2639,
+    "L": 564
+  },
+  "scope": "Four repository examples only; not the full StandUp4AI corpus. Verification clip excluded."
+}

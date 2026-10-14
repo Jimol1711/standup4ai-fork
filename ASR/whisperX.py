@@ -1,7 +1,11 @@
 import os
 import glob
 import whisperx
-from utils import whisperX2csv
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import runtime
+from ASR.utils import whisperX2csv
 
 def whisperX_main(list_files_index = ['_af-1wROuhw'], # list of indexes
                   path_wav = '/home/user/data/standup/audio/test_fr/',
@@ -11,6 +15,7 @@ def whisperX_main(list_files_index = ['_af-1wROuhw'], # list of indexes
                   device = "cuda",
                   batch_size = 32, # reduce if low on GPU mem
                   compute_type = "float16", # change to "int8" if low on GPU mem (may reduce accuracy)
+                  on_error=None,
                   ):
     
     # Create output folder if not existing
@@ -23,51 +28,52 @@ def whisperX_main(list_files_index = ['_af-1wROuhw'], # list of indexes
     # this was used to debug, not sure it is useful. Just converting to fast whisper seems to solve the prob
     # from huggingface_hub import snapshot_download
     # model_path = snapshot_download(model_name)
-    model = whisperx.load_model(model_name, device, compute_type=compute_type)
+    if model_name == 'large-v3':
+        model_name = runtime.local_model('Systran/faster-whisper-large-v3')
+    model = whisperx.load_model(model_name, device, compute_type=compute_type,
+                               language=lang, vad_method="silero")
+    from whisperx.alignment import DEFAULT_ALIGN_MODELS_HF
+    alignment_name = DEFAULT_ALIGN_MODELS_HF.get(lang)
+    if alignment_name:
+        alignment_name = runtime.local_model(alignment_name)
+    model_a, metadata = whisperx.load_align_model(language_code=lang, device=device,
+                                                 model_name=alignment_name)
 
     # save model to local path (optional)
     # model_dir = "/path/"
     # model = whisperx.load_model("large-v2", device, compute_type=compute_type, download_root=model_dir)
 
     for fn in list_files_index:
-        if not os.path.isfile(path_csv + f'{fn}.csv'):
-            audio_file = path_wav + f'{fn}.wav'
-
+        target = Path(path_csv) / f'{fn}.csv'
+        if target.exists():
+            print(f'Skip file... {target} already existing')
+            continue
+        try:
+            audio_file = str(Path(path_wav) / f'{fn}.wav')
             audio = whisperx.load_audio(audio_file)
             result = model.transcribe(audio, batch_size=batch_size)
-            # print(result["segments"]) # before alignment
-            if result["language"] == lang:
-                model_a, metadata = whisperx.load_align_model(language_code=lang, device=device)
-                result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
-
-                df = whisperX2csv(result)
-                df.to_csv(path_csv + f'{fn}.csv')
-            else:
-                print(f'Issue with file {fn}... language {result["language"]} detected')
-                model_a, metadata = whisperx.load_align_model(language_code=lang, device=device)
-                result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
-
-                df = whisperX2csv(result)
-                df.to_csv(path_csv + f'{fn}.csv')
-                with open(path_csv + 'errors_lang.txt', 'a') as f:
-                    f.write(f'{fn}\n')
-
-        else:
-            print(f'Skip file... {path_csv}{fn}.csv already existing')
+            result = whisperx.align(result['segments'], model_a, metadata, audio, device, return_char_alignments=False)
+            df = whisperX2csv(result)
+            temporary = target.with_suffix('.tmp.csv')
+            df.to_csv(temporary)
+            temporary.replace(target)
+        except Exception as error:
+            if on_error is None:
+                raise
+            on_error(fn, error)
 
 if __name__ == '__main__':
-
-    path_data_standup = '/home/user/data/standup/'
-
-    lang = 'test_fr'
-    
-    path_wav = path_data_standup + f'audio/{lang}/'
-    list_files_index = [os.path.split(k)[1].split('.')[0] for k in glob.glob(path_wav + "*.wav")]
-    whisperX_main(list_files_index = list_files_index, # list of indexes
-                path_wav = path_wav,
-                path_csv = path_data_standup + f'transcript/{lang}/whisperx-large-v3-french/',
-                model_name = "/home/user/standup_comedy/bofenghuang/faster-whisper-large-v3-french", # can use "large-v3", or any model converted previously to fast-whisper format, see https://github.com/SYSTRAN/faster-whisper#model-conversion
-                device = "cuda",
-                batch_size = 32, # reduce if low on GPU mem
-                compute_type = "float16", # change to "int8" if low on GPU mem (may reduce accuracy)
-                )
+    import argparse
+    parser = argparse.ArgumentParser(description='Transcribe and align WAV files with WhisperX')
+    parser.add_argument('--input_dir', type=Path, required=True)
+    parser.add_argument('--output_dir', type=Path, required=True)
+    parser.add_argument('--language', required=True)
+    parser.add_argument('--model', default='large-v3')
+    parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu')
+    parser.add_argument('--batch_size', type=int, default=1)
+    args = parser.parse_args()
+    whisperX_main([p.stem for p in sorted(args.input_dir.glob('*.wav'))],
+                  str(args.input_dir) + os.sep, str(args.output_dir) + os.sep,
+                  model_name=args.model, lang=args.language, device=args.device,
+                  batch_size=args.batch_size,
+                  compute_type='int8' if args.device == 'cpu' else 'float32')

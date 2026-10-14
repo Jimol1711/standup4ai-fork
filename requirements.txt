@@ -1,0 +1,25 @@
+# Python 3.11. Install CUDA PyTorch first; see SETUP_WINDOWS.md.
+setuptools>=70,<81
+torch==2.8.0
+torchaudio==2.8.0
+torchvision==0.23.0
+whisperx @ git+https://github.com/m-bain/whisperX.git@771b4a14a9486f8fd5aef18ef49e35d639523dd3
+transformers==4.57.6
+huggingface-hub>=0.34,<1
+librosa==0.10.1
+pydub==0.25.1
+numpy>=2.1,<2.3
+pandas>=2.2.3,<3
+scipy
+scikit-learn
+soundfile
+safetensors
+tqdm
+yt-dlp[default]
+curl-cffi
+datasets>=3,<4
+evaluate==0.4.6
+accelerate>=1,<2
+seqeval==1.2.2
+psutil
+imageio-ffmpeg==0.6.0

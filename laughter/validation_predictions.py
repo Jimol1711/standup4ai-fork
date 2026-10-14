@@ -6,8 +6,6 @@ import pandas as pd
 
 import sys
 import os
-sys.path.append(os.path.abspath("/home/user/standup_comedyclub/src"))
-from normalize_name import normalize_filename
 
 def calculate_iou(interval1, interval2):
     """

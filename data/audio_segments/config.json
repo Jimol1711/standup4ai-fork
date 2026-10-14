@@ -1,0 +1,7 @@
+{
+  "segment_seconds": 5.0,
+  "positive_rule": "any detected laughter overlap > 0 seconds",
+  "checkpoint": "omine-me/LaughterSegmentation",
+  "device": "cuda:0",
+  "downloads_enabled": false
+}

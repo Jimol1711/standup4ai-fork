@@ -3,6 +3,10 @@ import glob
 import os
 from tqdm import tqdm
 import numpy as np
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime import DATA_ROOT
 def isNaN(num):
     return num != num
 
@@ -12,7 +16,7 @@ def df2json(df):
     Works only for a df of 3 columns: text, t0, t1, t
     """
     words_chunks = []
-    for line in df.values:
+    for line in df[['text', 't0', 't1', 't']].dropna(subset=['text', 't0', 't1']).values:
         text, t0, t1, _ = line
         words_chunks.append({'text': text, 'timestamp' : [t0, t1]})
     return words_chunks
@@ -42,14 +46,14 @@ def label_words_with_laughter(chunks, laughters, verbose=True):
             # Heuristic for B
             prev_word_end = chunks[i - 1]['timestamp'][1] if i > 0 else 0
             if prev_word_end <= start <= word_start:
-                start_idx = i - 1
+                start_idx = max(0, i - 1)
             elif prev_word_end <= start <= word_end:
-                start_idx = i - 1
+                start_idx = max(0, i - 1)
 
             # Heuristic for L
             prev_word_end = chunks[i - 1]['timestamp'][1] if i > 0 else 0
             if prev_word_end <= end <= word_start:
-                end_idx = i - 1
+                end_idx = max(0, i - 1)
             elif prev_word_end <= end <= word_end:
                 end_idx = i
 
@@ -76,21 +80,23 @@ def label_words_with_laughter(chunks, laughters, verbose=True):
     return tagged_output
 
 
-def create_files_corpus(lang='es', ISpeech_only=True, Manual_annot=False):
+def create_files_corpus(lang='es', ISpeech_only=True, Manual_annot=False, data_root=None):
     """
     Create the files corpus for the laughter detection.
     """
 
     # read csv of the transcript, which as col text, t0, t1, t
-    list_transcript = [k.split('/')[-1].split('.')[0] for k in glob.glob(f"/home/user/data/standup/transcript/{lang}/mixed/*.csv")]
+    root = Path(data_root or DATA_ROOT)
+    list_transcript = [k.stem for k in sorted((root / 'transcript' / lang / 'mixed').glob('*.csv'))]
 
     for fn in tqdm(list_transcript):
 
-        dfw = pd.read_csv(f"/home/user/data/standup/transcript/{lang}/mixed/{fn}.csv", sep=',')
+        dfw = pd.read_csv(root / 'transcript' / lang / 'mixed' / f'{fn}.csv', sep=',')
+        dfw = dfw[['text', 't0', 't1', 't']]
         words_chunks = df2json(dfw)
 
         if Manual_annot:
-            path_csv = f'/home/user/data/standup/dataset/test_laughters_manual_annotation/{lang}/{fn}.csv'
+            path_csv = root / 'dataset' / 'test_laughters_manual_annotation' / lang / f'{fn}.csv'
             if os.path.exists(path_csv):
                 print(f"File found: {fn}.csv")
                 dfl = pd.read_csv(path_csv)
@@ -101,7 +107,7 @@ def create_files_corpus(lang='es', ISpeech_only=True, Manual_annot=False):
         else:
             if ISpeech_only:
                 try:
-                    dfl = pd.read_csv(f'/home/user/data/standup/laughter_detection/{lang}/Updated/{fn}.csv')
+                    dfl = pd.read_csv(root / 'laughter_detection' / lang / 'Updated' / f'{fn}.csv')
                 except: 
                     print(f"File not found: {fn}.csv") # ugly kludge to deal with a past error: data/standup/laughter_detection/cs/Updated/6XMqZJbU0Rw.csv'
                     continue
@@ -109,7 +115,7 @@ def create_files_corpus(lang='es', ISpeech_only=True, Manual_annot=False):
             else:
                 try:
                     # dfl = pd.read_csv(f'/home/user/data/standup/laughter_detection/{lang}/Updated_Filtered/{fn}.csv')
-                    dfl = pd.read_csv(f'/home/user/data/standup/dataset/validaciones_nahuel/{lang}/{fn}.csv')
+                    dfl = pd.read_csv(root / 'dataset' / 'validaciones_nahuel' / lang / f'{fn}.csv')
                 except: 
                     print(f"File not found: {fn}.csv") # ugly kludge to deal with a past error: data/standup/laughter_detection/cs/Updated/6XMqZJbU0Rw.csv'
                     continue
@@ -124,25 +130,20 @@ def create_files_corpus(lang='es', ISpeech_only=True, Manual_annot=False):
             dataset_type = ISpeech_only*'IS' + (not ISpeech_only)*'Filtered' +'/all/'
 
         # save file
-        path_csv = f'/home/user/data/standup/dataset/{lang}/' + dataset_type 
+        path_csv = str(root / 'dataset' / lang / dataset_type) + os.sep
         if not os.path.exists(path_csv):
             os.makedirs(path_csv, exist_ok=True)
 
-        pd.DataFrame(tagged).to_csv(path_csv + f'{fn}.csv', index=False)
+        pd.DataFrame(tagged, columns=['text', 'timestamp', 'label']).to_csv(path_csv + f'{fn}.csv', index=False)
 
     print (f'Language "{lang}" done!')
 
 if __name__ == '__main__':
-
-    fn = '_af-1wROuhw'
-    dfw = pd.read_csv(f'/home/user/data/standup/transcript/test_fr/WXF_final_{fn}.csv',)
-    words_chunks = df2json(dfw)
-
-    dfl = pd.read_csv(f'/home/user/data/standup/laughter_detection/test_fr/Updated/{fn}.csv')
-
-    laughters = {i: {'start_sec': t0, 'end_sec': t1} for i, (t0, t1) in enumerate(dfl[['t0', 't1']].values)}
-
-    tagged = label_words_with_laughter(words_chunks, laughters)
-    # To print tagged output:
-    for word in tagged:
-        print(f"{word['text']:>10} [{word['timestamp'][0]:.2f} - {word['timestamp'][1]:.2f}]: {word['label']}")
+    import argparse
+    parser = argparse.ArgumentParser(description='Create word-level laughter labels')
+    parser.add_argument('--lang', required=True)
+    parser.add_argument('--data-root', type=Path, default=DATA_ROOT)
+    parser.add_argument('--manual', action='store_true')
+    parser.add_argument('--filtered', action='store_true')
+    args = parser.parse_args()
+    create_files_corpus(args.lang, not args.filtered, args.manual, args.data_root)
