@@ -2,6 +2,17 @@
 
 ## Audio segment classification from downloaded videos
 
+To expand the segment dataset to all URLs, preserving completed clips:
+
+```powershell
+.\scripts\start_full_audio_dataset.ps1
+Get-Content data\audio_segments\download.log -Tail 20 -Wait
+```
+
+The full job downloads videos and labels completed downloads in batches. It does not run Whisper transcription. Press Ctrl+C to stop viewing the log; the background job continues. For counts, run `Get-Content data\audio_segments\full_progress.json`. Labeling details are in `data/audio_segments/labeling.log`; orchestration messages are in `data/audio_segments/full_pipeline.log`. To stop the job and all child processes, run `taskkill /PID (Get-Content data\audio_segments\full_pipeline.pid) /T /F`.
+
+Complete video recordings are stored under `data/standup/videos/<region>/`, extracted WAV recordings under `data/standup/audio/<region>/`, and labeled clips under `data/audio_segments/clips/<region>/<video_id>/`. The dataset CSV remains `data/audio_segments/segments.csv`. Download errors are recorded in `data/standup/events.jsonl`; deleted/private/restricted videos may prevent reaching the full target. Rerun the launcher after a finished or interrupted run to retry missing downloads. Keep the computer awake and online while the job runs.
+
 `build_audio_dataset.py` uses only completed local videos. It extracts their audio, runs the public laughter checkpoint, and writes `data/audio_segments/segments.csv` plus actual WAV clips under `data/audio_segments/clips`. No video downloads or ASR stages run. Labels are `laughter` (1) and `not_laughter` (0), with an explicit any-overlap rule on consecutive 5-second segments. The last segment of each video may be shorter.
 
 ```powershell

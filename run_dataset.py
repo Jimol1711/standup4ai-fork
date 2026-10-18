@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from urllib.parse import parse_qs, urlparse
 
 from runtime import DATA_ROOT, ROOT, local_model
@@ -70,15 +71,26 @@ def download(args, manifest):
             continue
         if shutil.disk_usage(args.data_root).free < args.min_free_gb * 2**30:
             raise RuntimeError('Insufficient disk space; free space then resume this command')
+        last_progress = [0.]
+        def progress(info):
+            now = time.monotonic()
+            if info['status'] == 'finished' or now - last_progress[0] >= 10:
+                last_progress[0] = now
+                total = info.get('total_bytes') or info.get('total_bytes_estimate')
+                amount = info.get('downloaded_bytes', 0)
+                percent = f'{100 * amount / total:.1f}%' if total else f'{amount / 2**20:.1f} MiB'
+                print(f'[download {row.video_id}] {info["status"]}: {percent}', flush=True)
         opts = {
             'format': f'bv*[height<={args.max_height}][ext=mp4]+ba[ext=m4a]/b[height<={args.max_height}][ext=mp4]/b[height<={args.max_height}]',
             'outtmpl': str(folder / '%(id)s.%(ext)s'),
             'merge_output_format': 'mp4',
             'ffmpeg_location': str(Path(sys.executable).parent),
-            'writesubtitles': True, 'writeautomaticsub': True,
+            'writesubtitles': not getattr(args, 'skip_subtitles', False),
+            'writeautomaticsub': not getattr(args, 'skip_subtitles', False),
             'subtitleslangs': [row.lang], 'noplaylist': True,
             'retries': 3, 'fragment_retries': 3, 'socket_timeout': 30,
             'js_runtimes': {'node': {}}, 'noprogress': True,
+            'progress_hooks': [progress],
         }
         if args.cookies:
             opts['cookiefile'] = str(args.cookies)
@@ -237,6 +249,7 @@ def main():
     parser.add_argument('--whisperx-model', default='large-v3')
     parser.add_argument('--laughter-model', type=Path, default=ROOT / 'laughter/models/model.safetensors')
     parser.add_argument('--cookies', type=Path, help='Optional Netscape cookies file; never committed')
+    parser.add_argument('--skip-subtitles', action='store_true', help='Do not fetch subtitles for audio-only labeling')
     parser.add_argument('--max-height', type=int, default=720)
     parser.add_argument('--min-free-gb', type=float, default=15)
     args = parser.parse_args()

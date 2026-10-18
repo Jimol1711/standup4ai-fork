@@ -47,3 +47,6 @@ venv-*-backup/
 !/data/labels_only/README.md
 /laughter/models/
 cookies*.txt
+
+segments.csv
+selected_videos.csv

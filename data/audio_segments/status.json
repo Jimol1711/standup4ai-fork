@@ -1,10 +1,10 @@
 {
-  "selected_videos": 81,
-  "completed_videos": 81,
-  "segments": 8713,
+  "selected_videos": 3617,
+  "completed_videos": 2915,
+  "segments": 196999,
   "label_counts": {
-    "laughter": 4377,
-    "not_laughter": 4336
+    "not_laughter": 141935,
+    "laughter": 55064
   },
-  "complete": true
+  "complete": false
 }

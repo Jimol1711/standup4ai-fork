@@ -88,6 +88,8 @@ def main():
     parser.add_argument('--output-root', type=Path, default=ROOT / 'data/audio_segments')
     parser.add_argument('--device', choices=['cpu', 'cuda:0'], default='cuda:0')
     parser.add_argument('--segment-seconds', type=float, default=5.)
+    parser.add_argument('--refresh-selection', action='store_true', help='Include newly downloaded videos')
+    parser.add_argument('--expected-total', type=int, help='Full target count while downloads continue')
     args = parser.parse_args()
     if args.segment_seconds <= 0:
         parser.error('--segment-seconds must be positive')
@@ -101,7 +103,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     # Freeze the selection once. Never fetch a URL or include unfinished downloads.
     selection = output / 'selected_videos.csv'
-    if selection.exists():
+    if selection.exists() and not args.refresh_selection:
         selected = pd.read_csv(selection)
     else:
         metadata = pd.read_csv(ROOT / 'CSV_clean/StandUp4AI_v1.csv')
@@ -125,7 +127,8 @@ def main():
         'selected_videos.csv freezes the already-downloaded source videos. status.json tracks progress; '
         'segments.csv is refreshed after each completed video. Clips from the same source video '
         'must stay in the same train/validation/test partition to avoid leakage.\n', encoding='utf-8')
-    combine(output, len(selected))
+    expected = args.expected_total or len(selected)
+    combine(output, expected)
     for row in selected.itertuples():
         audio = args.data_root / 'audio' / row.region / f'{row.video_id}.wav'
         if audio.exists():
@@ -140,16 +143,18 @@ def main():
         temporary.replace(audio)
     from laughter.inference_val import main as infer
     for region, group in selected.groupby('region'):
+        if all((output / 'per_video' / region / f'{identifier}.csv').exists() for identifier in group.video_id):
+            continue
         # Audio directory contains only extracted local videos; no download stage exists.
         def complete(audio_path, event_path):
             if audio_path.stem in set(group.video_id):
                 export_video(audio_path, event_path, output, region, args.segment_seconds)
-                combine(output, len(selected))
+                combine(output, expected)
         infer(str(args.data_root / 'audio' / region),
               str(args.data_root / 'laughter_detection' / region),
               str(ROOT / 'laughter/models/model.safetensors'), batch_size=1,
               device=args.device, on_complete=complete)
-    combine(output, len(selected))
+    combine(output, expected)
 
 
 if __name__ == '__main__':
